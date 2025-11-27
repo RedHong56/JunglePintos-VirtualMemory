@@ -6,22 +6,22 @@
 #include "threads/synch.h"
 #include <list.h>
 
-struct wait_status {
-  struct list_elem elem;
-  struct semaphore sema;
-  struct lock lock;
-  tid_t tid;
-  int exit_code;
-  int ref_cnt;
-  bool exited;
+struct sync_to_parent {
+  struct list_elem elem;       /* Link in parent's children list. */
+  struct semaphore sema;       /* Up when child finishes exiting. */
+  struct lock lock;            /* Guards exit_code/ref_cnt/exited. */
+  tid_t child_tid;             /* Child thread id. */
+  int exit_code;               /* Child's exit status. */
+  int ref_cnt;                 /* References from parent/child. */
+  bool exited;                 /* True once child has exited. */
 };
 
 struct fork_struct {
-  struct thread *parent;
-  struct intr_frame parent_if;
-  struct semaphore semaphore;
-  bool success;
-  struct wait_status *wait_status;
+  struct thread *parent;             /* Parent thread initiating fork. */
+  struct intr_frame parent_if;       /* Snapshot of parent's registers. */
+  struct semaphore semaphore;        /* Sync parent/child fork result. */
+  bool success;                      /* Child setup succeeded flag. */
+  struct sync_to_parent *sync2p;     /* Shared wait state with parent. */
 };
 
 tid_t process_create_initd (const char *file_name);

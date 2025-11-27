@@ -12,7 +12,7 @@
 struct lock;
 struct file;
 #ifdef USERPROG
-struct wait_status;
+struct sync_to_parent;
 #endif
 
 /* States in a thread's life cycle. */
@@ -105,13 +105,13 @@ struct thread {
 	struct list donators;
 	/* edward
 	list elements must be removed somewhere
-	- elem: schedule(through destruction_req using def)
-	- elem_for_donators: thread_remove_lock_donations
-	- elem_whole: thread_exit
+	- elem_default: schedule(through destruction_req using def)
+	- elem_donator: thread_remove_lock_donations
+	- elem_integrated: thread_exit
 	*/
-	struct list_elem elem; /* edward: ready_list + sleep_list + waiters (semaphore) */
-	struct list_elem elem_for_donators;
-	struct list_elem elem_whole;
+	struct list_elem elem_default;           /* edward: ready_list + sleep_list + waiters (semaphore) */
+	struct list_elem elem_donator;           /* edward: exclusively for the "struct list donators" */
+	struct list_elem elem_integrated;        /* edward: used for mlfqs */
 	int64_t wakeup_tick;
 	int stdin_cnt, stdout_cnt;
 	
@@ -123,7 +123,7 @@ struct thread {
 	bool fds_initialized;               /* Lazily init descriptor list. */
 	struct list children;               /* Child wait statuses. */
 	bool children_initialized;          /* Tracks list initialization. */
-	struct wait_status *wait_status;    /* Synchronization with parent. */
+	struct sync_to_parent *sync2p;    /* Synchronization with parent. */
 	struct file *running_file;
 #endif
 #ifdef VM

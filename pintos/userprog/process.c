@@ -31,15 +31,15 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *aux);
 static void __do_fork (void *);
 
-static struct wait_status *wait_status_create (void);
-static void wait_status_release (struct wait_status *ws);
-static void add_child_wait_status (struct thread *parent, struct wait_status *ws);
-static struct wait_status *remove_child_wait_status (struct thread *parent, tid_t child_tid);
+static struct sync_to_parent *wait_status_create (void);
+static void wait_status_release (struct sync_to_parent *sync2p);
+static void add_child_wait_status (struct thread *parent, struct sync_to_parent *sync2p);
+static struct sync_to_parent *remove_child_wait_status (struct thread *parent, tid_t child_tid);
 static void release_child_waits (struct thread *t);
 
 struct initd_args {
 	char *file_name;
-	struct wait_status *wait_status;
+	struct sync_to_parent *sync2p;
 };
 
 void
@@ -82,62 +82,62 @@ process_init (void) {
 #endif
 }
 
-static struct wait_status *
+static struct sync_to_parent *
 wait_status_create (void) {
-	struct wait_status *ws = malloc (sizeof *ws);
-	if (ws == NULL) return NULL;
-	sema_init (&ws->sema, 0);
-	lock_init (&ws->lock);
-	ws->tid = TID_ERROR;
-	ws->exit_code = -1;
-	ws->ref_cnt = 2;
-	ws->exited = false;
-	return ws;
+	struct sync_to_parent *sync2p = malloc (sizeof *sync2p);
+	if (sync2p == NULL) return NULL;
+	sema_init (&sync2p->sema, 0);
+	lock_init (&sync2p->lock);
+	sync2p->child_tid = TID_ERROR;
+	sync2p->exit_code = -1;
+	sync2p->ref_cnt = 2;
+	sync2p->exited = false;
+	return sync2p;
 }
 
-/* edward: decrease reference by 1 and free "ws" when "ref_cnt == 0" */
+/* edward: decrease reference by 1 and free sync2p when ref_cnt hits 0 */
 static void
-wait_status_release (struct wait_status *ws) {
+wait_status_release (struct sync_to_parent *sync2p) {
 	bool free_ws = false;
-	lock_acquire (&ws->lock);
-	ASSERT (ws->ref_cnt > 0);
-	ws->ref_cnt--;
-	if (ws->ref_cnt == 0) free_ws = true;
-	lock_release (&ws->lock);
-	if (free_ws) free (ws);
+	lock_acquire (&sync2p->lock);
+	ASSERT (sync2p->ref_cnt > 0);
+	sync2p->ref_cnt--;
+	if (sync2p->ref_cnt == 0) free_ws = true;
+	lock_release (&sync2p->lock);
+	if (free_ws) free (sync2p);
 }
 
-/* edward: put "ws" into list(parent's children list) */
+/* edward: put sync2p into list(parent's children list) */
 static void
-add_child_wait_status (struct thread *parent, struct wait_status *ws) {
+add_child_wait_status (struct thread *parent, struct sync_to_parent *sync2p) {
 	if (!parent->children_initialized) {
 		list_init (&parent->children);
 		parent->children_initialized = true;
 	}
-	list_push_back (&parent->children, &ws->elem);
+	list_push_back (&parent->children, &sync2p->elem);
 }
 
 /* remove the given child from the list */
-static struct wait_status *
+static struct sync_to_parent *
 remove_child_wait_status (struct thread *parent, tid_t child_tid) {
 	if (!parent->children_initialized) return NULL;
 	for (struct list_elem *e = list_begin (&parent->children); e != list_end (&parent->children); e = list_next (e)) {
-		struct wait_status *ws = list_entry (e, struct wait_status, elem);
-		if (ws->tid == child_tid) {
+		struct sync_to_parent *sync2p = list_entry (e, struct sync_to_parent, elem);
+		if (sync2p->child_tid == child_tid) {
 			list_remove (e);
-			return ws;
+			return sync2p;
 		}
 	}
 	return NULL;
 }
 
-/* edward: delist every child left on the list and decrease the following "ref_cnt" of the wait_status struct object */
+/* edward: delist every child left on the list and decrease the following ref_cnt of the sync_to_parent struct object */
 static void
 release_child_waits (struct thread *t) {
 	if (!t->children_initialized) return;
 	while (!list_empty (&t->children)) {
-		struct wait_status *ws = list_entry (list_pop_front (&t->children), struct wait_status, elem);
-		wait_status_release (ws);
+		struct sync_to_parent *sync2p = list_entry (list_pop_front (&t->children), struct sync_to_parent, elem);
+		wait_status_release (sync2p);
 	}
 }
 
@@ -151,16 +151,16 @@ process_create_initd (const char *file_name) {
 	process_init ();
 	struct initd_args *args = malloc (sizeof *args);
 	if (args == NULL) return TID_ERROR;
-	args->wait_status = wait_status_create ();
-	if (args->wait_status == NULL) {
+	args->sync2p = wait_status_create ();
+	if (args->sync2p == NULL) {
 		free (args);
 		return TID_ERROR;
 	}
 
 	char *fn_copy = palloc_get_page (0); /* Make a copy of FILE_NAME. Otherwise there's a race between the caller and load(). */
 	if (fn_copy == NULL) {
-		wait_status_release (args->wait_status);
-		wait_status_release (args->wait_status);
+		wait_status_release (args->sync2p);
+		wait_status_release (args->sync2p);
 		free (args);
 		return TID_ERROR;
 	}
@@ -177,13 +177,13 @@ process_create_initd (const char *file_name) {
 	if (tid == TID_ERROR) {
 		intr_set_level (old_level);
 		palloc_free_page (fn_copy);
-		wait_status_release (args->wait_status);
-		wait_status_release (args->wait_status);
+		wait_status_release (args->sync2p);
+		wait_status_release (args->sync2p);
 		free (args);
 		return TID_ERROR;
 	}
-	args->wait_status->tid = tid;
-	add_child_wait_status (thread_current (), args->wait_status);
+	args->sync2p->child_tid = tid;
+	add_child_wait_status (thread_current (), args->sync2p);
 	intr_set_level (old_level);
 	return tid;
 }
@@ -192,14 +192,14 @@ process_create_initd (const char *file_name) {
 static void
 initd (void *aux) {
 	struct initd_args *args = aux;
-	struct wait_status *wait_status = args->wait_status;
+	struct sync_to_parent *sync2p = args->sync2p;
 	char *file_name = args->file_name;
 	free (args);
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
 
-	thread_current ()->wait_status = wait_status;
+	thread_current ()->sync2p = sync2p;
 	process_init ();
 
 	if (process_exec (file_name) < 0) PANIC("Fail to launch initd\n");
@@ -217,8 +217,8 @@ process_fork (const char *name, struct intr_frame *if_) {
 	/* edward: make fork structure */
 	struct fork_struct *fs = malloc(sizeof *fs);
 	if(!fs) return TID_ERROR;
-	fs->wait_status = wait_status_create ();
-	if (fs->wait_status == NULL) {
+	fs->sync2p = wait_status_create ();
+	if (fs->sync2p == NULL) {
 		free (fs);
 		return TID_ERROR;
 	}
@@ -236,15 +236,15 @@ process_fork (const char *name, struct intr_frame *if_) {
 	if(tid == TID_ERROR) { /* edward: in case of creation failure */
 		intr_set_level (old_level);
 		/* edward: parent + child */
-		wait_status_release (fs->wait_status);
-		wait_status_release (fs->wait_status);
+		wait_status_release (fs->sync2p);
+		wait_status_release (fs->sync2p);
 		free(fs);
 		return TID_ERROR;
 	}
 
 	/* edward: enlist the child to the list of parent thread struct */
-	fs->wait_status->tid = tid;
-	add_child_wait_status (thread_current (), fs->wait_status);
+	fs->sync2p->child_tid = tid;
+	add_child_wait_status (thread_current (), fs->sync2p);
 	intr_set_level (old_level);
 
 	sema_down(&fs->semaphore); /* edward: wait for child to wake it up after the fork */
@@ -253,7 +253,7 @@ process_fork (const char *name, struct intr_frame *if_) {
 		return tid;
 	}
 	remove_child_wait_status (thread_current (), tid);
-	wait_status_release (fs->wait_status);
+	wait_status_release (fs->sync2p);
 	free(fs);
 	return TID_ERROR;
 }
@@ -305,9 +305,9 @@ static void
 __do_fork (void *aux) {
 	struct fork_struct *fs = aux;
 	struct intr_frame if_;
-	struct thread *parent = (struct thread *) fs->parent;
 	struct thread *current = thread_current ();
-	current->wait_status = fs->wait_status;
+	struct thread *parent = (struct thread *) fs->parent;
+	current->sync2p = fs->sync2p;
 	struct intr_frame *parent_if = &fs->parent_if; /* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 
 	/* 1. Read the cpu context to local stack. */
@@ -380,13 +380,13 @@ For now, it does nothing.
 */
 int
 process_wait (tid_t child_tid) {
-	struct wait_status *ws = remove_child_wait_status (thread_current (), child_tid);
-	if (ws == NULL) return -1;
-	sema_down (&ws->sema);
-	lock_acquire (&ws->lock);
-	int status = ws->exit_code;
-	lock_release (&ws->lock);
-	wait_status_release (ws);
+	struct sync_to_parent *sync2p = remove_child_wait_status (thread_current (), child_tid);
+	if (sync2p == NULL) return -1;
+	sema_down (&sync2p->sema);
+	lock_acquire (&sync2p->lock);
+	int status = sync2p->exit_code;
+	lock_release (&sync2p->lock);
+	wait_status_release (sync2p);
 	return status;
 }
 
@@ -403,20 +403,20 @@ process_exit (void) {
 	bool fds_initialized;
 	struct list children;
 	bool children_initialized;
-	struct wait_status *wait_status;
+	struct sync_to_parent *sync2p;
 	*/
 	struct thread *curr = thread_current ();
 	if (curr->pml4 != NULL) printf ("%s: exit(%d)\n", curr->name, curr->exit_status);
 
 	release_child_waits (curr);
-	if (curr->wait_status != NULL) {
-		lock_acquire (&curr->wait_status->lock);
-		curr->wait_status->exit_code = curr->exit_status;
-		curr->wait_status->exited = true; /* edward: alert parent that current child process finished */
-		lock_release (&curr->wait_status->lock);
-		sema_up (&curr->wait_status->sema); /* edward: wake parent up */
-		wait_status_release (curr->wait_status);
-		curr->wait_status = NULL;
+	if (curr->sync2p != NULL) {
+		lock_acquire (&curr->sync2p->lock);
+		curr->sync2p->exit_code = curr->exit_status;
+		curr->sync2p->exited = true; /* edward: alert parent that current child process finished */
+		lock_release (&curr->sync2p->lock);
+		sema_up (&curr->sync2p->sema); /* edward: wake parent up */
+		wait_status_release (curr->sync2p);
+		curr->sync2p = NULL;
 	}
 	if (curr->running_file) {
 		file_allow_write(curr->running_file);

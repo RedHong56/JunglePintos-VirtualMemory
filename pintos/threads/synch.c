@@ -66,7 +66,7 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+		list_push_back (&sema->waiters, &thread_current ()->elem_default);
 		thread_block ();
 	}
 	sema->value--;
@@ -116,7 +116,7 @@ sema_up (struct semaphore *sema) {
 		*/
 		struct list_elem *t = list_max(&sema->waiters, thread_cmp_priority_asc, NULL);
 		list_remove(t);
-		thread_unblock(list_entry (t, struct thread, elem));
+		thread_unblock(list_entry (t, struct thread, elem_default));
 	}
 	sema->value++;
 	check_preemption();
@@ -208,7 +208,7 @@ lock_acquire (struct lock *lock) {
 		then, we have to look for possibility for extra nested donation
 		*/
 		curr->waiting_for = lock;
-		list_push_back (&lock->holder->donators, &curr->elem_for_donators);
+		list_push_back (&lock->holder->donators, &curr->elem_donator);
 		thread_refresh_priority (lock->holder);
 		thread_propagate_donation (lock->holder);
 	}
@@ -374,8 +374,8 @@ cond_waiter_cmp_priority_asc (const struct list_elem *a, const struct list_elem 
 		return true;
 
 	const struct thread *ta = list_entry (list_front (&sa->semaphore.waiters),
-			struct thread, elem);
+			struct thread, elem_default);
 	const struct thread *tb = list_entry (list_front (&sb->semaphore.waiters),
-			struct thread, elem);
+			struct thread, elem_default);
 	return ta->priority < tb->priority;
 }
