@@ -42,8 +42,7 @@ static struct frame *vm_evict_frame (void);
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
 bool
-vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
-		vm_initializer *init, void *aux) {
+vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, vm_initializer *init, void *aux) {
 
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
@@ -208,8 +207,26 @@ static bool page_less (const struct hash_elem *a, const struct hash_elem *b, voi
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
-	
-	hash_init(&spt->hash, page_hash, page_less, NULL);
+	bool success = hash_init(&spt->h_table, __hash, __less, NULL); /* ?? */
+	ASSERT(success);
+}
+
+/* ------------------------------------------------------------------ */
+/* 					Hash Table Helper Functions                       */
+/* ------------------------------------------------------------------ */
+static hash_hash_func __hash(const struct hash_elem *e, void *aux) {
+	const struct page *p = hash_entry (e, struct page, hash_e);
+	return hash_bytes (&p->va, sizeof (p->va));
+}
+
+/* ------------------------------------------------------------------ */
+/* 					Hash Table Helper Functions                       */
+/* ------------------------------------------------------------------ */
+/* edward: compare the key */
+static hash_less_func __less(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
+	const struct page *page_a = hash_entry (a, struct page, hash_e);
+	const struct page *page_b = hash_entry (b, struct page, hash_e);
+	return page_a->va < page_b->va;
 }
 
 /* Copy supplemental page table from src to dst */
