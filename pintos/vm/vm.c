@@ -3,7 +3,7 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
-#include "hash.h"
+#include "kernel/hash.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -62,32 +62,38 @@ err:
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt, void *va) {
-	struct page tmp_p; /* edward: mocked page to find the page */
-	tmp_p.va = pg_round_down(va);
-	struct hash_elem *found_e = hash_find(&spt->h_table, &tmp_p.hash_e);
-	if(!found_e) return NULL;
-	return hash_entry(found_e, struct page, hash_e);
-	// struct list *buckets = spt->h_table.buckets;
-	// size_t bucket_cnt = spt->h_table.bucket_cnt;
-	// for (int idx = 0; idx < bucket_cnt; idx++) {
-	// 	struct list bucket = buckets[idx];
-	// 	for (struct list *t = list_begin (bucket); t != list_end (bucket); t = list_next (t)) {
-	// 		struct hash_elem *traverse = list_elem_to_hash_elem (t);
-	// 		struct page *target = hash_entry(traverse, struct page, hash_e);
-	// 		if (target->va == va) return target;
-	// 	}
-	// }
-	// return NULL;
+spt_find_page (struct supplemental_page_table *spt , void *va) 
+{
+	struct page p;
+	
+	p.va = pg_round_down(va);
+	
+	struct hash_elem *hash_e = hash_find(&spt->hash, &p.hash_elem);
+
+	if (!hash_e){
+		return NULL;
+	}
+
+	return hash_entry(hash_e, struct page, hash_elem);
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
-	ASSERT(pg_ofs(page->va) == 0);
-	struct hash_elem *outdated_e = hash_insert(&spt->h_table, &page->hash_e);
-	if (!outdated_e) return true;
-	return false;
+spt_insert_page (struct supplemental_page_table *spt, struct page *page) 
+{
+	int succ = false;
+	
+	// if(hash_find(&spt->hash, &page->hash_elem)){
+	// 	return succ;
+	// }
+
+	struct hash_elem *old_page = hash_insert(&spt->hash, &page->hash_elem);
+	
+	if (!old_page){
+		succ = true; 
+	}
+
+	return succ;
 }
 
 void
@@ -180,6 +186,22 @@ vm_do_claim_page (struct page *page) {
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 
 	return swap_in (page, frame->kva);
+}
+
+/* convert va to key value*/
+static uint64_t page_hash (struct has_elem *e, void *aux UNUSED){
+	/* 받은 elem -> offset을 계산해 va를 찾는다  */
+    struct page *p = hash_entry(e, struct page, hash_elem);
+
+	return hash_bytes(&p->va, sizeof(p->va));
+}
+
+/* compare two pages' va for hash table ordering */
+static bool page_less (const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED){
+    struct page *pa = hash_entry(a, struct page, hash_elem);
+    struct page *pb = hash_entry(b, struct page, hash_elem);
+    
+    return pa->va < pb->va;
 }
 
 /* Initialize new supplemental page table */
