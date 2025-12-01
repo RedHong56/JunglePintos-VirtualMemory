@@ -4,6 +4,7 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "kernel/hash.h"
+#include "threads/mmu.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -65,15 +66,11 @@ struct page *
 spt_find_page (struct supplemental_page_table *spt , void *va) 
 {
 	struct page p;
-	
 	p.va = pg_round_down(va);
-	
 	struct hash_elem *hash_elem = hash_find(&spt->h_table, &p.hash_elem);
-
 	if (!hash_elem){
 		return NULL;
 	}
-
 	return hash_entry(hash_elem, struct page, hash_elem);
 }
 
@@ -83,7 +80,7 @@ spt_insert_page (struct supplemental_page_table *spt, struct page *page)
 {
 	int succ = false;
 	struct hash_elem *old_page = hash_insert(&spt->h_table, &page->hash_elem);
-	if (!old_page){
+	if (!old_page) {
 		succ = true; 
 	}
 	return succ;
@@ -120,10 +117,11 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
-	/* TODO: Fill this function. */
-
+	struct frame *frame = calloc(1, sizeof(struct frame));
 	ASSERT (frame != NULL);
+	frame->kva = palloc_get_page (PAL_USER);
+	ASSERT (frame->kva != NULL); /* currently not considering the case of space shortage */
+	frame->page = NULL;
 	ASSERT (frame->page == NULL);
 	return frame;
 }
@@ -146,7 +144,6 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-
 	return vm_do_claim_page (page);
 }
 
@@ -160,10 +157,9 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-vm_claim_page (void *va UNUSED) {
-	struct page *page = NULL;
-	/* TODO: Fill this function */
-
+vm_claim_page (void *va) {
+	struct page *page = spt_find_page(&thread_current()->spt, va);
+	if (!page) return false;
 	return vm_do_claim_page (page);
 }
 
@@ -171,21 +167,21 @@ vm_claim_page (void *va UNUSED) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
-
-	/* Set links */
 	frame->page = page;
 	page->frame = frame;
-
-	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-
-	return swap_in (page, frame->kva);
+	if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->is_writable)) {
+		page->frame = NULL;
+		frame->page = NULL;
+		return false;
+	}
+	return swap_in (page, frame->kva); /* swap the data into the frame that we got previously */
 }
 
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
-	bool success = hash_init(&spt->h_table, __hash, __less, NULL); /* ?? */
-	ASSERT(success);
+	bool success = hash_init(&spt->h_table, __hash, __less, NULL);
+	ASSERT(success); /* ??: not sure if this assertion is required */
 }
 
 /* ------------------------------------------------------------------ */
