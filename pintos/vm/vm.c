@@ -5,29 +5,6 @@
 #include "vm/inspect.h"
 #include "hash.h"
 
-/* ------------------------------------------------------------------ */
-/* 					Hash Table Helper Functions                       */
-/* ------------------------------------------------------------------ */
-static uint64_t
-page_hash(const struct hash_elem *e, void *aux)
-{
-	/* get page*/
-	struct page *p = hash_entry(e, struct page, hash_elem);
-	
-	return hash_bytes(&p->va, sizeof(p->va));
-}
-/* ------------------------------------------------------------------ */
-/* 					Hash Table Helper Functions                       */
-/* ------------------------------------------------------------------ */
-static bool
-page_less(const struct hash_elem *a, const struct hash_elem *b, void *aux)
-{
-	struct page *p_a = hash_entry(a, struct page, hash_elem);
-	struct page *p_b = hash_entry(b, struct page, hash_elem);
-	
-	return true ? (p_a->va < p_b->va) : false;
-}
-
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -65,8 +42,7 @@ static struct frame *vm_evict_frame (void);
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
 bool
-vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
-		vm_initializer *init, void *aux) {
+vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, vm_initializer *init, void *aux) {
 
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
@@ -86,32 +62,32 @@ err:
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page dummy_page; //dummy(stack memory)
-	page.va = pg_round_down(va); 
-
-	struct hash_elem *e = hash_find(spt ,&page->hash_elem); // Get the elem with the page in va you are looking for
-	if (!e){
-		return NULL;
-	}
-	return hash_entry(e, struct page, hash_elem);// Get the page
+spt_find_page (struct supplemental_page_table *spt, void *va) {
+	struct page tmp_p; /* edward: mocked page to find the page */
+	tmp_p.va = pg_round_down(va);
+	struct hash_elem *found_e = hash_find(&spt->h_table, &tmp_p.hash_e);
+	if(!found_e) return NULL;
+	return hash_entry(found_e, struct page, hash_e);
+	// struct list *buckets = spt->h_table.buckets;
+	// size_t bucket_cnt = spt->h_table.bucket_cnt;
+	// for (int idx = 0; idx < bucket_cnt; idx++) {
+	// 	struct list bucket = buckets[idx];
+	// 	for (struct list *t = list_begin (bucket); t != list_end (bucket); t = list_next (t)) {
+	// 		struct hash_elem *traverse = list_elem_to_hash_elem (t);
+	// 		struct page *target = hash_entry(traverse, struct page, hash_e);
+	// 		if (target->va == va) return target;
+	// 	}
+	// }
+	// return NULL;
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED, struct page *page UNUSED) {
-	int succ = false;
-	/* TODO: Fill this function. */
-	/*take hash_elem in struct page*/
-	struct hash_elem *e = &page->hash_elem;
-	/*use hash_insert_function*/
-	e = hash_insert(&spt,e); // If a page is inserted into spt, null is returned.
-	if (!e){ //succ
-		succ = true;
-	}
-	
-	/*if the insertion is successful, the return value is true.*/
-	return succ;
+spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
+	ASSERT(pg_ofs(page->va) == 0);
+	struct hash_elem *outdated_e = hash_insert(&spt->h_table, &page->hash_e);
+	if (!outdated_e) return true;
+	return false;
 }
 
 void
@@ -208,9 +184,27 @@ vm_do_claim_page (struct page *page) {
 
 /* Initialize new supplemental page table */
 void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
-	/*use hash_init*/
-	hash_init(spt, page_hash, page_less, NULL);
+supplemental_page_table_init (struct supplemental_page_table *spt) {
+	bool success = hash_init(&spt->h_table, __hash, __less, NULL); /* ?? */
+	ASSERT(success);
+}
+
+/* ------------------------------------------------------------------ */
+/* 					Hash Table Helper Functions                       */
+/* ------------------------------------------------------------------ */
+static hash_hash_func __hash(const struct hash_elem *e, void *aux) {
+	const struct page *p = hash_entry (e, struct page, hash_e);
+	return hash_bytes (&p->va, sizeof (p->va));
+}
+
+/* ------------------------------------------------------------------ */
+/* 					Hash Table Helper Functions                       */
+/* ------------------------------------------------------------------ */
+/* edward: compare the key */
+static hash_less_func __less(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
+	const struct page *page_a = hash_entry (a, struct page, hash_e);
+	const struct page *page_b = hash_entry (b, struct page, hash_e);
+	return page_a->va < page_b->va;
 }
 
 /* Copy supplemental page table from src to dst */
