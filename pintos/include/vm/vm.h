@@ -1,33 +1,33 @@
 #ifndef VM_VM_H
 #define VM_VM_H
-#include <stdbool.h>
-#include "threads/palloc.h"
 #include "lib/kernel/hash.h"
+#include "threads/palloc.h"
+#include <stdbool.h>
 
 enum vm_type {
-	/* page not initialized */
-	VM_UNINIT = 0,
-	/* page not related to the file, aka anonymous page */
-	VM_ANON = 1,
-	/* page that realated to the file */
-	VM_FILE = 2,
-	/* page that hold the page cache, for project 4 */
-	VM_PAGE_CACHE = 3,
+  /* page not initialized */
+  VM_UNINIT = 0,
+  /* page not related to the file, aka anonymous page */
+  VM_ANON = 1,
+  /* page that realated to the file */
+  VM_FILE = 2,
+  /* page that hold the page cache, for project 4 */
+  VM_PAGE_CACHE = 3,
 
-	/* Bit flags to store state */
+  /* Bit flags to store state */
 
-	/* Auxillary bit flag marker for store information. You can add more
-	 * markers, until the value is fit in the int. */
-	VM_MARKER_0 = (1 << 3),
-	VM_MARKER_1 = (1 << 4),
+  /* Auxillary bit flag marker for store information. You can add more
+   * markers, until the value is fit in the int. */
+  VM_MARKER_0 = (1 << 3),
+  VM_MARKER_1 = (1 << 4),
 
-	/* DO NOT EXCEED THIS VALUE. */
-	VM_MARKER_END = (1 << 31),
+  /* DO NOT EXCEED THIS VALUE. */
+  VM_MARKER_END = (1 << 31),
 };
 
-#include "vm/uninit.h"
 #include "vm/anon.h"
 #include "vm/file.h"
+#include "vm/uninit.h"
 #ifdef EFILESYS
 #include "filesys/page_cache.h"
 #endif
@@ -57,9 +57,9 @@ struct page {
 		struct anon_page anon;
 		struct file_page file;
 #ifdef EFILESYS
-		struct page_cache page_cache;
+    struct page_cache page_cache;
 #endif
-	};
+  };
 };
 
 /* The representation of "frame" */
@@ -74,22 +74,23 @@ struct frame {
  * Put the table of "method" into the struct's member, and
  * call it whenever you needed. */
 struct page_operations {
-	bool (*swap_in) (struct page *, void *);
-	bool (*swap_out) (struct page *);
-	void (*destroy) (struct page *);
-	enum vm_type type;
+  bool (*swap_in)(struct page *, void *);
+  bool (*swap_out)(struct page *);
+  void (*destroy)(struct page *);
+  enum vm_type type;
 };
 
-#define swap_in(page, v) (page)->operations->swap_in ((page), v)
-#define swap_out(page) (page)->operations->swap_out (page)
-#define destroy(page) \
-	if ((page)->operations->destroy) (page)->operations->destroy (page)
+#define swap_in(page, v) (page)->operations->swap_in((page), v)
+#define swap_out(page) (page)->operations->swap_out(page)
+#define destroy(page)                                                          \
+  if ((page)->operations->destroy)                                             \
+  (page)->operations->destroy(page)
 
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
-	struct hash h_table;
+  struct hash h_table;
 };
 
 #include "threads/thread.h"
