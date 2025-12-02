@@ -72,15 +72,11 @@ struct page *
 spt_find_page (struct supplemental_page_table *spt , void *va) 
 {
 	struct page p;
-	
 	p.va = pg_round_down(va);
-	
 	struct hash_elem *hash_elem = hash_find(&spt->h_table, &p.hash_elem);
-
 	if (!hash_elem){
 		return NULL;
 	}
-
 	return hash_entry(hash_elem, struct page, hash_elem);
 }
 
@@ -90,7 +86,7 @@ spt_insert_page (struct supplemental_page_table *spt, struct page *page)
 {
 	int succ = false;
 	struct hash_elem *old_page = hash_insert(&spt->h_table, &page->hash_elem);
-	if (!old_page){
+	if (!old_page) {
 		succ = true; 
 	}
 	return succ;
@@ -127,7 +123,7 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-    struct frame *frame = malloc(sizeof(struct frame));			
+  struct frame *frame = malloc(sizeof(struct frame));			
 	ASSERT (frame != NULL);
 
 	void *kva = palloc_get_page(PAL_USER);
@@ -165,7 +161,6 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-
 	return vm_do_claim_page (page);
 }
 
@@ -179,11 +174,8 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-vm_claim_page (void *va) 
-{
-	struct page *page = NULL;
-	
-	page = spt_find_page(&thread_current()->spt, va);
+vm_claim_page (void *va) {
+	struct page *page = spt_find_page(&thread_current()->spt, va);
 	
 	if (page == NULL) {
 		return false;
@@ -196,30 +188,28 @@ vm_claim_page (void *va)
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
-
-	/* Set links */
 	frame->page = page;
 	page->frame = frame;
-
-	/* Insert page table entry to map page's VA to frame's PA. */
+  
 	if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
+		page->frame = NULL;
+		frame->page = NULL;
 		return false;
 	}
-
-	return swap_in (page, frame->kva);
+	return swap_in (page, frame->kva); /* swap the data into the frame that we got previously */
 }
 
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
-	bool success = hash_init(&spt->h_table, __hash, __less, NULL); /* ?? */
-	ASSERT(success);
+	bool success = hash_init(&spt->h_table, __hash, __less, NULL);
+	ASSERT(success); /* ??: not sure if this assertion is required */
 }
 
 /* ------------------------------------------------------------------ */
 /* 					Hash Table Helper Functions                       */
 /* ------------------------------------------------------------------ */
-static hash_hash_func __hash(const struct hash_elem *e, void *aux) {
+static uint64_t __hash(const struct hash_elem *e, void *aux) {
 	const struct page *p = hash_entry (e, struct page, hash_elem);
 	return hash_bytes (&p->va, sizeof (p->va));
 }
@@ -228,7 +218,7 @@ static hash_hash_func __hash(const struct hash_elem *e, void *aux) {
 /* 					Hash Table Helper Functions                       */
 /* ------------------------------------------------------------------ */
 /* edward: compare the key */
-static hash_less_func __less(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
+static bool __less(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
 	const struct page *page_a = hash_entry (a, struct page, hash_elem);
 	const struct page *page_b = hash_entry (b, struct page, hash_elem);
 	return page_a->va < page_b->va;
