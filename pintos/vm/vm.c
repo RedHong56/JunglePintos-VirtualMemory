@@ -1,7 +1,6 @@
 /* vm.c: Generic interface for virtual memory objects. */
 
 #include "vm/vm.h"
-// #include "hash.h"
 #include "kernel/hash.h"
 #include "threads/mmu.h"
 #include "threads/synch.h"
@@ -45,15 +44,12 @@ static struct frame *vm_evict_frame(void);
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
-bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
-                                    bool writable, vm_initializer *init,
-                                    void *aux) {
-
+bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writable, vm_initializer *init, void *aux) {
   ASSERT(VM_TYPE(type) != VM_UNINIT);
 
   struct supplemental_page_table *spt = &thread_current()->spt;
+  bool (*initializer)(struct page *, enum vm_type, void *kva) = NULL;
 
-  /* Check wheter the upage is already occupied or not. */
   if (spt_find_page(spt, upage) == NULL) {
     /* TODO: Create the page, fetch the initialier according to the VM type,
      * TODO: and then create "uninit" page struct by calling uninit_new. You
@@ -84,8 +80,6 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
     if (!spt_insert_page(spt, page)){
       goto err;
     }
-  }else {
-    goto err;
   }
 
   return true;
@@ -98,14 +92,13 @@ err:
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt , void *va) 
-{
+spt_find_page (struct supplemental_page_table *spt , void *va) {
 	struct page p;
 	p.va = pg_round_down(va);
 	
   struct hash_elem *hash_elem = hash_find(&spt->h_table, &p.hash_elem);
 	
-  if (!hash_elem){
+  if (!hash_elem) {
 		return NULL;
 	}
 	return hash_entry(hash_elem, struct page, hash_elem);
@@ -119,7 +112,7 @@ spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
   struct hash_elem *old_page = hash_insert(&spt->h_table, &page->hash_elem);
 	
   if (!old_page) {
-		succ = true; 
+		succ = true;
 	}
 	return succ;
 }
@@ -156,7 +149,7 @@ vm_get_frame (void) {
 	ASSERT (frame != NULL);
 
 	void *kva = palloc_get_page(PAL_USER);
-	if (kva == NULL){
+	if (kva == NULL) {
 		free(frame);
 		PANIC("TODO: swap_out");
 	}
@@ -180,10 +173,9 @@ static bool vm_handle_wp(struct page *page UNUSED) {}
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	struct page *page = NULL;
+vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
+	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct page *page = spt_find_page(spt, pg_round_down(addr));
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	return vm_do_claim_page (page);
@@ -242,8 +234,7 @@ static uint64_t __hash(const struct hash_elem *e, void *aux) {
 /* 					Hash Table Helper Functions */
 /* ------------------------------------------------------------------ */
 /* edward: compare the key */
-static bool __less(const struct hash_elem *a, const struct hash_elem *b,
-                   void *aux) {
+static bool __less(const struct hash_elem *a, const struct hash_elem *b, void *aux) {
   const struct page *page_a = hash_entry(a, struct page, hash_elem);
   const struct page *page_b = hash_entry(b, struct page, hash_elem);
   return (page_a->va < page_b->va);
