@@ -20,6 +20,7 @@
 #include "userprog/process.h"
 #include "vm/vm.h"
 #include "intrinsic.h"
+#include "vm/vm.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -214,12 +215,9 @@ validate_user_buffer (const void *buffer, size_t size) {
 	const uint8_t *ptr = buffer;
 	// printf("✅ entered validate user buffer\n");
 	for (size_t i = 0; i < size; i++) {
-		if (!is_user_vaddr (ptr + i) || !spt_find_page(&thread_current()->spt, buffer + i)) {
+		if (!is_user_vaddr (ptr + i) || !spt_find_page(&thread_current()->spt, ptr + i)) {
 			exit_with_error();
 		}
-		// if (!is_user_vaddr (ptr + i) || pml4_get_page (thread_current ()->pml4, ptr + i) == NULL) {
-		// 	exit_with_error();
-		// }
 	}
 	// printf("❌ exits validate user buffer\n");
 }

@@ -174,8 +174,12 @@ static bool vm_handle_wp(struct page *page UNUSED) {}
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
   /* TODO: Validate the fault */
-  if (!not_present) return false;
-  if (!addr || !is_user_vaddr(addr) || pg_round_down(addr) < (void *) PGSIZE) return false;
+  if (!not_present) {
+    return false;
+  }
+  if (!addr || !is_user_vaddr(addr) || pg_round_down(addr) < (void *) PGSIZE) {
+    return false;
+  }
 
   struct supplemental_page_table *spt = &thread_current ()->spt;
   struct page *page = spt_find_page(spt, pg_round_down(addr));
@@ -185,11 +189,17 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
     void *rsp = user ? f->rsp : thread_current()->tf.rsp;
     if (rsp - 8 <= addr && addr <= USER_STACK) {
       bool success = vm_alloc_page_with_initializer(VM_ANON | VM_MARKER_0, pg_round_down(addr), true, NULL, NULL);
-      if (success) page = spt_find_page(spt, pg_round_down(addr));
+      if (success) {
+        page = spt_find_page(spt, pg_round_down(addr));
+      }
     }
   }
-  if (!page) return false;
-  if (write && !page->writable) return false;
+  if (!page) {
+    return false;
+  }
+  if (write && !page->writable) {
+    return false;
+  }
 
   return vm_do_claim_page (page);
 }
