@@ -6,6 +6,10 @@
 #include "threads/synch.h"
 #include "vm/inspect.h"
 #include "threads/malloc.h"
+#include "include/userprog/process.h"
+#include "lib/string.h"
+#include "include/vm/vm.h"
+
 static struct list frame_list;  /* list for managing frame */
 static struct lock frame_lock;  /* lock for frame list*/
 
@@ -258,11 +262,69 @@ static bool __less(const struct hash_elem *a, const struct hash_elem *b, void *a
   return (page_a->va < page_b->va);
 }
 
+static void __destructor (struct hash_elem *e, void *aux) {
+    struct page *page = hash_entry(e, struct page, hash_elem);
+
+    if (page->operations->destroy) {
+      destroy(page);
+    }
+
+    vm_dealloc_page(page);
+}
+
 /* Copy supplemental page table from src to dst */
-bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED, struct supplemental_page_table *src UNUSED) {}
+bool supplemental_page_table_copy(struct supplemental_page_table *dst , struct supplemental_page_table *src) {
+  struct hash_iterator iter;
+
+  hash_first(&iter, &src->h_table);
+  struct hash_elem *elem;
+  while (elem = hash_next(&iter)){
+    struct page *src_page = hash_entry(hash_cur(&iter),struct page , hash_elem);
+    enum vm_type o_type = src_page->operations->type;
+    bool writable = src_page->writable;
+
+    if (o_type == VM_UNINIT){
+      struct lazy_load_aux *aux = malloc(sizeof(struct lazy_load_aux));
+      if (!aux) {
+         return false;
+      }
+
+      memcpy(aux,src_page->uninit.aux, sizeof(struct lazy_load_aux));
+
+      if (aux->file) {
+          aux->file = file_reopen(aux->file);
+      }
+      
+      struct uninit_page *p = &src_page->uninit;
+      enum vm_type type = p->type;
+      struct vm_initializer *init = p->init;
+
+      if (!vm_alloc_page_with_initializer(type, src_page->va, writable, init, aux)){
+        file_close(aux->file);
+        free(aux);
+        return false;
+      }
+
+    } else {
+      // vm_alloc 하고 바로 eager loading 하는 방식
+      if(!vm_alloc_page_with_initializer(o_type, src_page->va, writable, NULL, NULL)){
+          return false;
+      }
+      
+      if (!vm_claim_page(src_page->va)){
+        return false;
+      }
+      
+      struct page *dst_page = spt_find_page(dst, src_page->va);
+      memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+    }    
+  }
+
+  return true;
+}
 
 /* Free the resource hold by the supplemental page table */
-void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED) {
-  /* TODO: Destroy all the supplemental_page_table hold by thread and
-   * TODO: writeback all the modified contents to the storage. */
+void supplemental_page_table_kill(struct supplemental_page_table *spt) {
+
+  hash_destroy(&spt->h_table, __destructor);
 }
