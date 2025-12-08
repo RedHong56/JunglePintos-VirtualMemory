@@ -9,6 +9,8 @@
 #include "include/userprog/process.h"
 #include "lib/string.h"
 
+#define STACK_LIMIT (1 << 20)
+
 static struct list frame_list;  /* list for managing frame */
 static struct lock frame_lock;  /* lock for frame list*/
 
@@ -169,7 +171,13 @@ vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void vm_stack_growth(void *addr UNUSED) {}
+static void vm_stack_growth(void *addr) {
+  ASSERT(!spt_find_page(&thread_current()->spt, pg_round_down(addr)));
+  if (USER_STACK - STACK_LIMIT > pg_round_down(addr)) {
+    return;
+  }
+  vm_alloc_page_with_initializer(VM_ANON | VM_MARKER_0, pg_round_down(addr), true, NULL, NULL);
+}
 
 /* Handle the fault on write_protected page */
 static bool vm_handle_wp(struct page *page UNUSED) {}
@@ -185,22 +193,21 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
     return false;
   }
 
-  struct supplemental_page_table *spt = &thread_current ()->spt;
+  struct supplemental_page_table *spt = &thread_current()->spt;
   struct page *page = spt_find_page(spt, pg_round_down(addr));
   
   /* TODO: Your code goes here */
   if (!page) {
     void *rsp = user ? f->rsp : thread_current()->tf.rsp;
     if (rsp - 8 <= addr && addr <= USER_STACK) {
-      bool success = vm_alloc_page_with_initializer(VM_ANON | VM_MARKER_0, pg_round_down(addr), true, NULL, NULL);
-      if (success) {
-        page = spt_find_page(spt, pg_round_down(addr));
-      }
+      vm_stack_growth(addr);
+      page = spt_find_page(spt, pg_round_down(addr));
+    }
+    if (!page) {
+      return false;
     }
   }
-  if (!page) {
-    return false;
-  }
+
   if (write && !page->writable) {
     return false;
   }
@@ -292,7 +299,7 @@ void supplemental_page_table_kill(struct supplemental_page_table *spt) {
 
 
 
-//// HELPER OPEN //// //// HELPER OPEN //// //// HELPER OPEN //// //// HELPER OPEN //// //// HELPER OPEN //// //// HELPER OPEN //// //// HELPER OPEN //// //// HELPER OPEN ////
+//// HELPER STARTS HERE //// HELPER STARTS HERE //// HELPER STARTS HERE //// HELPER STARTS HERE //// HELPER STARTS HERE //// HELPER STARTS HERE //// HELPER STARTS HERE //// HELPER STARTS HERE ////
 static uint64_t __hash(const struct hash_elem *e, void *aux) {
   const struct page *p = hash_entry(e, struct page, hash_elem);
   return hash_bytes(&p->va, sizeof(p->va));
@@ -328,7 +335,12 @@ static bool __copy_uninit(struct page *src_page) {
 
     memcpy(aux_copy, src_uninit->aux, sizeof(struct lazy_load_aux));
     if (aux_copy->file) {
-      aux_copy->file = file_reopen(aux_copy->file);
+      if (intended_type == VM_ANON) {
+        aux_copy->file = thread_current()->running_file;
+      }
+      else if (intended_type == VM_FILE) {
+      }
+      // aux_copy->file = file_reopen(aux_copy->file);
       if (!aux_copy->file) {
         free(aux_copy);
         return false;
@@ -374,4 +386,4 @@ static bool __copy_init(struct page *src_page) {
   return true;
 }
 
-//// HELPER CLOSE //// //// HELPER CLOSE //// //// HELPER CLOSE //// //// HELPER CLOSE //// //// HELPER CLOSE //// //// HELPER CLOSE //// //// HELPER CLOSE //// //// HELPER CLOSE ////
+//// HELPER STOPS HERE //// HELPER STOPS HERE //// HELPER STOPS HERE //// HELPER STOPS HERE //// HELPER STOPS HERE //// HELPER STOPS HERE //// HELPER STOPS HERE //// HELPER STOPS HERE ////

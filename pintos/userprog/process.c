@@ -319,6 +319,7 @@ __do_fork (void *aux) {
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL) goto error;
 	process_activate (current);
+	thread_current()->running_file = file_duplicate(parent->running_file);
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt)) goto error;
@@ -357,6 +358,10 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
+	if (thread_current()->running_file) {
+		file_close(thread_current()->running_file);
+		thread_current()->running_file = NULL;
+	}
 	process_cleanup (); /* We first kill the current context */
 #ifdef VM
 	supplemental_page_table_init(&thread_current()->spt);

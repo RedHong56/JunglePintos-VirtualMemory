@@ -109,15 +109,14 @@ struct thread {
   - elem_donator: thread_remove_lock_donations
   - elem_integrated: thread_exit
   */
-  struct list_elem
-      elem_default; /* edward: ready_list + sleep_list + waiters (semaphore) */
-  struct list_elem
-      elem_donator; /* edward: exclusively for the "struct list donators" */
+  struct list_elem elem_default; /* edward: ready_list + sleep_list + waiters (semaphore) */
+  struct list_elem elem_donator; /* edward: exclusively for the "struct list donators" */
   struct list_elem elem_integrated; /* edward: used for mlfqs */
   int64_t wakeup_tick;
   int stdin_cnt, stdout_cnt;
-
-#ifdef USERPROG
+  struct file *running_file;
+  
+  #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint64_t *pml4;                /* Page map level 4 */
   struct list file_descriptors;  /* Open file descriptors. */
@@ -126,7 +125,6 @@ struct thread {
   struct list children;          /* Child wait statuses. */
   bool children_initialized;     /* Tracks list initialization. */
   struct sync_to_parent *sync2p; /* Synchronization with parent. */
-  struct file *running_file;
 #endif
 #ifdef VM
   /* Table for whole virtual memory owned by thread. */
