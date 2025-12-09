@@ -55,11 +55,8 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
   ASSERT(VM_TYPE(type) != VM_UNINIT);
 
   struct supplemental_page_table *spt = &thread_current()->spt;
-  struct page *page;
+  struct page *page = NULL;
   if (spt_find_page(spt, upage) == NULL) {
-    /* TODO: Create the page, fetch the initialier according to the VM type,
-     * TODO: and then create "uninit" page struct by calling uninit_new. You
-     * TODO: should modify the field after calling the uninit_new. */
     page = malloc(sizeof(struct page));
     if (!page) {
       goto err;
@@ -81,7 +78,6 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
     
     page->writable = writable;
 
-    /* TODO: Insert the page into the spt. */
     if (!spt_insert_page(spt, page)) {
       goto err;
     }
@@ -172,12 +168,11 @@ vm_get_frame (void) {
 
 /* Growing the stack. */
 static void vm_stack_growth(void *addr) {
-  // printf("✅ entered vm_stack_growth\n");
-  ASSERT(!spt_find_page(&thread_current()->spt, pg_round_down(addr)));
-  if (USER_STACK - STACK_LIMIT > pg_round_down(addr)) {
+  void *stack_bottom = pg_round_down(addr);
+
+  if(!vm_alloc_page_with_initializer(VM_ANON | VM_MARKER_0, stack_bottom, true, NULL, NULL)){
     return;
   }
-  vm_alloc_page_with_initializer(VM_ANON | VM_MARKER_0, pg_round_down(addr), true, NULL, NULL);
 }
 
 /* Handle the fault on write_protected page */
@@ -200,15 +195,14 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
   /* TODO: Your code goes here */
   if (!page) {
     void *rsp = user ? f->rsp : thread_current()->user_rsp;
-    // printf("😡 user_rsp: %x\n", thread_current()->user_rsp);
-    // printf("😡 f->rsp: %x\n", f->rsp);
-    // printf("😡 tf.rsp: %x\n", thread_current()->tf.rsp);
-    if (rsp - 8 <= addr && addr <= USER_STACK) {
+    if (addr <= USER_STACK &&  addr >= USER_STACK - (1 << 20) && rsp - 8 <= addr) {
+        
       vm_stack_growth(addr);
+       
       page = spt_find_page(spt, pg_round_down(addr));
-    }
-    if (!page) {
-      return false;
+      if (!page) {
+        return false;
+      }
     }
   }
 
@@ -298,7 +292,7 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst , struct s
 
 /* Free the resource hold by the supplemental page table */
 void supplemental_page_table_kill(struct supplemental_page_table *spt) {
-  hash_destroy(&spt->h_table, __destructor);
+  hash_destroy(&spt->h_table, __destructor); 
 }
 
 
@@ -318,7 +312,8 @@ static bool __less(const struct hash_elem *a, const struct hash_elem *b, void *a
 
 static void __destructor (struct hash_elem *e, void *aux) {
     struct page *page = hash_entry(e, struct page, hash_elem);
-    vm_dealloc_page(page);
+    
+      vm_dealloc_page(page);
 }
 
 static bool __copy_uninit(struct page *src_page) {
@@ -336,27 +331,15 @@ static bool __copy_uninit(struct page *src_page) {
     if (!aux_copy) {
       return false;
     }
-
     memcpy(aux_copy, src_uninit->aux, sizeof(struct lazy_load_aux));
-    if (aux_copy->file) {
-      if (intended_type == VM_ANON) {
-        aux_copy->file = thread_current()->running_file;
-      }
-      else if (intended_type == VM_FILE) {
-      }
-      // aux_copy->file = file_reopen(aux_copy->file);
-      if (!aux_copy->file) {
-        free(aux_copy);
-        return false;
-      }
-    }
+  }
+
+  if (intended_type == VM_ANON){
+    aux_copy->file = thread_current()->running_file;
   }
 
   if (!vm_alloc_page_with_initializer(intended_type, va, writable, src_uninit->init, aux_copy)) {
     if (aux_copy) {
-      if (aux_copy->file) {
-        file_close(aux_copy->file);
-      }
       free(aux_copy);
     }
     return false;

@@ -61,7 +61,9 @@ uninit_initialize (struct page *page, void *kva) {
 static void
 uninit_destroy (struct page *page) {
   struct uninit_page *uninit = &page->uninit;
-  if (uninit->aux) {
-    free(uninit->aux);
-  }
+  struct lazy_load_aux *aux = uninit->aux;
+
+    if (aux != NULL) {
+        free(aux); 
+    }
 }

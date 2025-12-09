@@ -319,7 +319,11 @@ __do_fork (void *aux) {
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL) goto error;
 	process_activate (current);
-	thread_current()->running_file = file_duplicate(parent->running_file);
+
+	current->running_file = file_duplicate(parent->running_file);
+	if(!current->running_file){
+		goto error;	
+	}
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt)) goto error;
@@ -437,11 +441,14 @@ process_cleanup (void) {
 	struct thread *curr = thread_current ();
 	
 	if (curr->running_file) {
-		// file_allow_write(curr->running_file);
 		file_close(curr->running_file);
 		curr->running_file = NULL;
 	}
 
+	if (curr->running_file != NULL) {
+        file_close(curr->running_file);
+        curr->running_file = NULL;
+    }
 #ifdef VM
 	supplemental_page_table_kill (&curr->spt);
 #endif
