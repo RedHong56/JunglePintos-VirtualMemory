@@ -140,11 +140,11 @@ write_handler (int fd, const void *buffer, unsigned length) {
 	if (length == 0) return 0;
 	
 	struct file_descriptor *desc = fd_lookup (fd);
+	if (!desc) return -1;
 	if (desc->file) {
 		validate_user_buffer (buffer, length, desc->file->deny_write);
 	}
 	
-	if (!desc) return -1;
 	if (!desc->file) { /* STDIN, STDOUT */
 		if (desc->fd_kind == FD_STDIN) return -1;
 		if (desc->fd_kind == FD_STDOUT) {
@@ -166,7 +166,7 @@ read_handler (int fd, void *buffer, unsigned length) {
 	// printf("💻 entered read_handler\n");
 	// printf("👀 before validate_user_buffer\n");
 	validate_user_buffer (buffer, length, true);
-	
+
 	// printf("👀 after validate_user_buffer\n");
 
 	// if (fd == STDIN_FILENO) {
