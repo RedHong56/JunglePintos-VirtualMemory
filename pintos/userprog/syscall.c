@@ -166,6 +166,7 @@ read_handler (int fd, void *buffer, unsigned length) {
 	// printf("💻 entered read_handler\n");
 	// printf("👀 before validate_user_buffer\n");
 	validate_user_buffer (buffer, length, true);
+	
 	// printf("👀 after validate_user_buffer\n");
 
 	// if (fd == STDIN_FILENO) {
@@ -220,7 +221,7 @@ validate_user_buffer (const void *buffer, size_t size, bool writable) {
     uintptr_t addr;
     
     /* 저장해둔 유저 rsp 가져오기 */
-    uintptr_t rsp = curr->u_rsp;
+    uintptr_t rsp = curr->user_rsp;
 
     for (size_t i = 0; i < size; i++) {
         addr = (uintptr_t)(ptr + i);
@@ -234,7 +235,7 @@ validate_user_buffer (const void *buffer, size_t size, bool writable) {
         /* 페이지가 있는지 확인 */
         if (!tmp_page) {
             /* 스택 확장 조건이라면 Page Fault 핸들러가 처리하도록 유도 */
-            if (addr <= USER_STACK &&  addr >= USER_STACK - (1 << 20) && rsp - 8 <= addr) {
+            if (addr <= USER_STACK &&  addr >= USER_STACK - STACK_LIMIT && rsp - 8 <= addr) {
                 continue; 
             }
             

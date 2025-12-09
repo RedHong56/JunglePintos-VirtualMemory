@@ -4,6 +4,8 @@
 #include "threads/palloc.h"
 #include <stdbool.h>
 
+#define STACK_LIMIT (1 << 20)
+
 enum vm_type {
   /* page not initialized */
   VM_UNINIT = 0,

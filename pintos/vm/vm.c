@@ -9,8 +9,6 @@
 #include "include/userprog/process.h"
 #include "lib/string.h"
 
-#define STACK_LIMIT (1 << 20)
-
 static struct list frame_list;  /* list for managing frame */
 static struct lock frame_lock;  /* lock for frame list*/
 
@@ -195,15 +193,16 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
   /* TODO: Your code goes here */
   if (!page) {
     void *rsp = user ? f->rsp : thread_current()->user_rsp;
-    if (addr <= USER_STACK &&  addr >= USER_STACK - (1 << 20) && rsp - 8 <= addr) {
+    if (addr <= USER_STACK &&  addr >= USER_STACK - STACK_LIMIT && rsp - 8 <= addr) {
         
       vm_stack_growth(addr);
        
       page = spt_find_page(spt, pg_round_down(addr));
-      if (!page) {
-        return false;
-      }
     }
+  }
+
+  if (!page) {
+    return false;
   }
 
   if (write && !page->writable) {
