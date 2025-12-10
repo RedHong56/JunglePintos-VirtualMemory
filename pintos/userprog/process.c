@@ -445,10 +445,6 @@ process_cleanup (void) {
 		curr->running_file = NULL;
 	}
 
-	if (curr->running_file != NULL) {
-        file_close(curr->running_file);
-        curr->running_file = NULL;
-    }
 #ifdef VM
 	supplemental_page_table_kill (&curr->spt);
 #endif
